@@ -10,6 +10,7 @@ import targets = require('@aws-cdk/aws-events-targets');
 import codedeploy = require('@aws-cdk/aws-codedeploy');
 import codepipeline = require('@aws-cdk/aws-codepipeline');
 import codepipeline_actions = require('@aws-cdk/aws-codepipeline-actions');
+import path = require('path');
 
 
 export class EcsFargateCicdStack extends cdk.Stack {
@@ -64,14 +65,14 @@ export class EcsFargateCicdStack extends cdk.Stack {
     taskDef.addToExecutionRolePolicy(executionRolePolicy);
 
     const container = taskDef.addContainer('flask-app',{
-      image:ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
+      image:ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'node-bulletin-board\\bulletin-board-app')),
       memoryLimitMiB:256,
       cpu:256,
       logging
     });
 
     container.addPortMappings({
-      containerPort:5000,
+      containerPort:80,
       protocol:ecs.Protocol.TCP
     });
 
@@ -83,12 +84,12 @@ export class EcsFargateCicdStack extends cdk.Stack {
       listenerPort:80
     });
 
-    const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
-    scaling.scaleOnCpuUtilization('CpuScaling',{
-      targetUtilizationPercent:10,
-      scaleInCooldown:cdk.Duration.seconds(60),
-      scaleOutCooldown:cdk.Duration.seconds(60)
-    });
+    // const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
+    // scaling.scaleOnCpuUtilization('CpuScaling',{
+    //   targetUtilizationPercent:10,
+    //   scaleInCooldown:cdk.Duration.seconds(60),
+    //   scaleOutCooldown:cdk.Duration.seconds(60)
+    // });
 
   }
 }
