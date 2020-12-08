@@ -65,14 +65,14 @@ export class EcsFargateCicdStack extends cdk.Stack {
     taskDef.addToExecutionRolePolicy(executionRolePolicy);
 
     const container = taskDef.addContainer('flask-app',{
-      image:ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'node-bulletin-board\\bulletin-board-app')),
+      image:ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
       memoryLimitMiB:256,
       cpu:256,
       logging
     });
 
     container.addPortMappings({
-      containerPort:80,
+      containerPort:8080,
       protocol:ecs.Protocol.TCP
     });
 
