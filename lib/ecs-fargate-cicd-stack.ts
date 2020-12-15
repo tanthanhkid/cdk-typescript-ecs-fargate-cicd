@@ -84,12 +84,146 @@ export class EcsFargateCicdStack extends cdk.Stack {
       listenerPort:80
     });
 
-    // const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
-    // scaling.scaleOnCpuUtilization('CpuScaling',{
-    //   targetUtilizationPercent:10,
-    //   scaleInCooldown:cdk.Duration.seconds(60),
-    //   scaleOutCooldown:cdk.Duration.seconds(60)
-    // });
+    const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
+    scaling.scaleOnCpuUtilization('CpuScaling',{
+      targetUtilizationPercent:10,
+      scaleInCooldown:cdk.Duration.seconds(60),
+      scaleOutCooldown:cdk.Duration.seconds(60)
+    });
+
+    // ECR repo
+
+    const ecrRepo = new ecr.Repository(this,'BulletinWebsiteRepo');
+
+    const gitHubSource=codebuild.Source.gitHub({
+      owner:'tanthanhkid',
+      repo:'node-bulletin-board',
+      webhook:true,
+      webhookFilters:[
+        codebuild.FilterGroup.inEventOf(codebuild.EventAction.PUSH).andBranchIs('master')
+      ]
+    });
+
+    // CODEBUILD - project
+    const project  = new codebuild.Project(this,'BulletinWebsiteProject',{
+      projectName:`${this.stackName}`,
+      source:gitHubSource,
+      environment:{
+        buildImage:codebuild.LinuxBuildImage.AMAZON_LINUX_2_2,
+        privileged:true
+      },
+      environmentVariables:{
+        'CLUSTER_NAME':{
+          value:`${cluster.clusterName}`
+        },
+        'ECR_REPO_URI':{
+          value:`${ecrRepo.repositoryUri}`
+        }
+      },
+      buildSpec:codebuild.BuildSpec.fromObject({
+        version:"0.2",
+        phases:{
+          pre_build:{
+            commands:[
+              'env',
+              'export TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION}'
+            ]
+          },
+          build:{
+            commands:[
+              'cd node-bulletin-board',
+              `docker build -t $ECR_REPO_URI:$TAG .`,
+              '$(aws ecr get-login --no-include-email)',
+              'docker push $ECR_REPO_URI:$TAG'
+            ]
+          },
+          post_build: {
+            commands: [
+              'echo "In Post-Build Stage"',
+              'cd ..',
+              "printf '[{\"name\":\"node-bulletin-board\",\"imageUri\":\"%s\"}]' $ECR_REPO_URI:$TAG > imagedefinitions.json",
+              "pwd; ls -al; cat imagedefinitions.json"
+            ]
+          }
+        },
+        artifacts: {
+          files: [
+            'imagedefinitions.json'
+          ]
+        }
+      })
+    });
+
+    // ***PIPELINE ACTIONS***
+
+    const sourceOutput = new codepipeline.Artifact();
+    const buildOutput = new codepipeline.Artifact();
+
+    const sourceAction = new codepipeline_actions.GitHubSourceAction({
+      actionName: 'GitHub_Source',
+      owner:'tanthanhkid',
+      repo:'node-bulletin-board',
+      branch: 'master',
+      oauthToken: cdk.SecretValue.secretsManager("/my/github/token"),
+      //oauthToken: cdk.SecretValue.plainText('<plain-text>'),
+      output: sourceOutput
+    });
+
+    const buildAction = new codepipeline_actions.CodeBuildAction({
+      actionName: 'CodeBuild',
+      project: project,
+      input: sourceOutput,
+      outputs: [buildOutput], // optional
+    });
+
+    const manualApprovalAction = new codepipeline_actions.ManualApprovalAction({
+      actionName: 'Approve',
+    });
+
+    const deployAction = new codepipeline_actions.EcsDeployAction({
+      actionName: 'DeployAction',
+      service: fargateService.service,
+      imageFile: new codepipeline.ArtifactPath(buildOutput, `imagedefinitions.json`)
+    });
+
+    // PIPELINE STAGES
+
+    new codepipeline.Pipeline(this, 'MyECSPipeline', {
+      stages: [
+        {
+          stageName: 'Source',
+          actions: [sourceAction],
+        },
+        {
+          stageName: 'Build',
+          actions: [buildAction],
+        },
+        {
+          stageName: 'Approve',
+          actions: [manualApprovalAction],
+        },
+        {
+          stageName: 'Deploy-to-ECS',
+          actions: [deployAction],
+        }
+      ]
+    });
+
+    ecrRepo.grantPullPush(project.role!)
+    project.addToRolePolicy(new iam.PolicyStatement({
+      actions: [
+        "ecs:DescribeCluster",
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer"
+        ],
+      resources: [`${cluster.clusterArn}`],
+    }));
+
+    //OUTPUT
+
+    new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: fargateService.loadBalancer.loadBalancerDnsName });
 
   }
 }
