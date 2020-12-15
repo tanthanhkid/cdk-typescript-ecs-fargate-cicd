@@ -164,7 +164,8 @@ export class EcsFargateCicdStack extends cdk.Stack {
       owner:'tanthanhkid',
       repo:'node-bulletin-board',
       branch: 'master',
-      oauthToken: cdk.SecretValue.secretsManager("/my/github/token"), //1241c589fe31372eb9885851bedde4a64912ed6c
+      oauthToken: cdk.SecretValue.secretsManager("/my/github/token"), 
+      //1241c589fe31372eb9885851bedde4a64912ed6c 
       //oauthToken: cdk.SecretValue.plainText('<plain-text>'),
       output: sourceOutput
     });
