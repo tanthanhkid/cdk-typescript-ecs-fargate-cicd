@@ -10,6 +10,7 @@ import targets = require('@aws-cdk/aws-events-targets');
 import codedeploy = require('@aws-cdk/aws-codedeploy');
 import codepipeline = require('@aws-cdk/aws-codepipeline');
 import codepipeline_actions = require('@aws-cdk/aws-codepipeline-actions');
+import elbv2 = require('@aws-cdk/aws-elasticloadbalancingv2');
 import s3 = require('@aws-cdk/aws-s3');
 import path = require('path');
 
@@ -25,7 +26,7 @@ export class EcsFargateCicdStack1 extends cdk.Stack {
     const vpc = new ec2.Vpc(this, 'ecs-cdk-vpc', {
       cidr: '10.0.0.0/16',
       natGateways: 1,
-      maxAzs: 3
+      maxAzs: 2
     });
 
     const clusterAdmin = new iam.Role(this, 'AdminRole', {
@@ -34,6 +35,10 @@ export class EcsFargateCicdStack1 extends cdk.Stack {
 
     const cluster = new ecs.Cluster(this, "ecs-cluster", {
       vpc: vpc,
+    });
+    
+     cluster.addCapacity('DefaultAutoScalingGroup', {
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO)
     });
 
     const logging = new ecs.AwsLogDriver({
@@ -61,40 +66,56 @@ export class EcsFargateCicdStack1 extends cdk.Stack {
     });
   const ecrRepo = new ecr.Repository(this,'BulletinWebsiteRepo');
   
-    const taskDef = new ecs.FargateTaskDefinition(this,'ecs-taskdef',{
-      taskRole:taskRole
-    });
+    // const taskDef = new ecs.FargateTaskDefinition(this,'ecs-taskdef',{
+    //   taskRole:taskRole
+    // });
 
-    taskDef.addToExecutionRolePolicy(executionRolePolicy);
     
-   
+    
+    // const container = taskDef.addContainer('flask-app',{
+    //   image: ecs.ContainerImage.fromEcrRepository(ecrRepo,"latest"),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
+    //   memoryLimitMiB:256,
+    //   cpu:256,
+    //   logging
+    // });
 
-    const container = taskDef.addContainer('flask-app',{
-      image: ecs.ContainerImage.fromEcrRepository(ecrRepo,"latest"),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
-      memoryLimitMiB:256,
-      cpu:256,
-      logging
+    
+
+    // const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this,'ecs-service',{
+    //   cluster:cluster,
+    //   taskDefinition:taskDef,
+    //   publicLoadBalancer:true,
+    //   desiredCount:1,
+    //   listenerPort:80
+    // });
+    
+      const taskDef = new ecs.Ec2TaskDefinition(this, "MyTaskDefinition");
+      
+      taskDef.addToExecutionRolePolicy(executionRolePolicy); 
+      
+  const container =   taskDef.addContainer("AppContainer", {
+      image: ecs.ContainerImage.fromEcrRepository(ecrRepo,"latest"),
+      memoryLimitMiB: 512,
+      logging,
     });
-
-    container.addPortMappings({
+    
+container.addPortMappings({
       containerPort:8080,
       protocol:ecs.Protocol.TCP
     });
 
-    const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this,'ecs-service',{
-      cluster:cluster,
-      taskDefinition:taskDef,
-      publicLoadBalancer:true,
-      desiredCount:3,
-      listenerPort:8080
+    // Instantiate ECS Service with just cluster and image
+   const ecsService= new ecs.Ec2Service(this, "Ec2Service", {
+      cluster,
+      taskDefinition: taskDef,
     });
 
-    const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
-    scaling.scaleOnCpuUtilization('CpuScaling',{
-      targetUtilizationPercent:10,
-      scaleInCooldown:cdk.Duration.seconds(60),
-      scaleOutCooldown:cdk.Duration.seconds(60)
-    });
+    // const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
+    // scaling.scaleOnCpuUtilization('CpuScaling',{
+    //   targetUtilizationPercent:10,
+    //   scaleInCooldown:cdk.Duration.seconds(60),
+    //   scaleOutCooldown:cdk.Duration.seconds(60)
+    // });
 
  
  const codeCommitRole: iam.IRole | undefined = new iam.Role(this, 'CodeCommitRole', {
@@ -180,7 +201,7 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
 
     const deployAction = new codepipeline_actions.EcsDeployAction({
       actionName: 'DeployAction',
-      service: fargateService.service,
+      service: ecsService,
       imageFile: new codepipeline.ArtifactPath(buildOutput, `imagedefinitions.json`)
     });
 
@@ -242,7 +263,7 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
 
     //OUTPUT
 
-    new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: fargateService.loadBalancer.loadBalancerDnsName });
+    // new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: ecsService});
     new cdk.CfnOutput(this, 'Progess', { value: 'Finished 100%' });
 
   }
