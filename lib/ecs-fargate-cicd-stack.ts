@@ -61,40 +61,40 @@ export class EcsFargateCicdStack1 extends cdk.Stack {
     });
   const ecrRepo = new ecr.Repository(this,'BulletinWebsiteRepo');
   
-    // const taskDef = new ecs.FargateTaskDefinition(this,'ecs-taskdef',{
-    //   taskRole:taskRole
-    // });
+    const taskDef = new ecs.FargateTaskDefinition(this,'ecs-taskdef',{
+      taskRole:taskRole
+    });
 
-    // taskDef.addToExecutionRolePolicy(executionRolePolicy);
+    taskDef.addToExecutionRolePolicy(executionRolePolicy);
     
    
 
-    // const container = taskDef.addContainer('flask-app',{
-    //   image: ecs.ContainerImage.fromEcrRepository(ecrRepo,"latest"),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
-    //   memoryLimitMiB:256,
-    //   cpu:256,
-    //   logging
-    // });
+    const container = taskDef.addContainer('flask-app',{
+      image: ecs.ContainerImage.fromEcrRepository(ecrRepo,"latest"),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
+      memoryLimitMiB:256,
+      cpu:256,
+      logging
+    });
 
-    // container.addPortMappings({
-    //   containerPort:8080,
-    //   protocol:ecs.Protocol.TCP
-    // });
+    container.addPortMappings({
+      containerPort:8080,
+      protocol:ecs.Protocol.TCP
+    });
 
-    // const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this,'ecs-service',{
-    //   cluster:cluster,
-    //   taskDefinition:taskDef,
-    //   publicLoadBalancer:true,
-    //   desiredCount:3,
-    //   listenerPort:8080
-    // });
+    const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this,'ecs-service',{
+      cluster:cluster,
+      taskDefinition:taskDef,
+      publicLoadBalancer:true,
+      desiredCount:3,
+      listenerPort:8080
+    });
 
-    // const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
-    // scaling.scaleOnCpuUtilization('CpuScaling',{
-    //   targetUtilizationPercent:10,
-    //   scaleInCooldown:cdk.Duration.seconds(60),
-    //   scaleOutCooldown:cdk.Duration.seconds(60)
-    // });
+    const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
+    scaling.scaleOnCpuUtilization('CpuScaling',{
+      targetUtilizationPercent:10,
+      scaleInCooldown:cdk.Duration.seconds(60),
+      scaleOutCooldown:cdk.Duration.seconds(60)
+    });
 
  
  const codeCommitRole: iam.IRole | undefined = new iam.Role(this, 'CodeCommitRole', {
@@ -107,7 +107,7 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
     const project  = new codebuild.Project(this,'BulletinWebsiteProject',{
       projectName:`${this.stackName}`,
       source:codebuild.Source.codeCommit({repository:bulletinRepo}), 
-      role:clusterAdmin,
+      // role:codeCommitRole,
       environment:{
         buildImage:codebuild.LinuxBuildImage.AMAZON_LINUX_2_2,
         privileged:true
@@ -145,11 +145,11 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
             ]
           }
         },
-        artifacts: {
-          files: [
-            'imagedefinitions.json'
-          ]
-        }
+        // artifacts: {
+        //   files: [
+        //     'imagedefinitions.json'
+        //   ]
+        // }
       })
     });
  
@@ -178,11 +178,11 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
     //   actionName: 'Approve',
     // });
 
-    // const deployAction = new codepipeline_actions.EcsDeployAction({
-    //   actionName: 'DeployAction',
-    //   service: fargateService.service,
-    //   imageFile: new codepipeline.ArtifactPath(buildOutput, `imagedefinitions.json`)
-    // });
+    const deployAction = new codepipeline_actions.EcsDeployAction({
+      actionName: 'DeployAction',
+      service: fargateService.service,
+      imageFile: new codepipeline.ArtifactPath(buildOutput, `imagedefinitions.json`)
+    });
 
     // PIPELINE STAGES
 
@@ -200,10 +200,10 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
         //   stageName: 'Approve',
         //   actions: [manualApprovalAction],
         // },
-        // {
-        //   stageName: 'Deploy-to-ECS',
-        //   actions: [deployAction],
-        // }
+        {
+          stageName: 'Deploy-to-ECS',
+          actions: [deployAction],
+        }
       ]
     });
 
@@ -211,17 +211,38 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
     project.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         "ecs:DescribeCluster",
-        "ecr:GetAuthorizationToken",
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:BatchGetImage",
-        "ecr:GetDownloadUrlForLayer"
+        "codebuild:*",
+                "codecommit:GetBranch",
+                "codecommit:GetCommit",
+                "codecommit:GetRepository",
+                "codecommit:ListBranches",
+                "codecommit:ListRepositories",
+                "cloudwatch:GetMetricStatistics",
+                "ec2:DescribeVpcs",
+                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeSubnets",
+                "ecr:DescribeRepositories",
+                "ecr:ListImages",
+                "elasticfilesystem:DescribeFileSystems",
+                "events:DeleteRule",
+                "events:DescribeRule",
+                "events:DisableRule",
+                "events:EnableRule",
+                "events:ListTargetsByRule",
+                "events:ListRuleNamesByTarget",
+                "events:PutRule",
+                "events:PutTargets",
+                "events:RemoveTargets",
+                "logs:GetLogEvents",
+                "s3:GetBucketLocation",
+                "s3:ListAllMyBuckets"
         ],
       resources: [`${cluster.clusterArn}`],
     }));
 
     //OUTPUT
 
-    // new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: fargateService.loadBalancer.loadBalancerDnsName });
+    new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: fargateService.loadBalancer.loadBalancerDnsName });
     new cdk.CfnOutput(this, 'Progess', { value: 'Finished 100%' });
 
   }
