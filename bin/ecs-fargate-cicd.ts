@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
 import * as cdk from '@aws-cdk/core';
-import { EcsFargateCicdStack1 } from '../lib/ecs-fargate-cicd-stack';
+ 
+import { CiCdStack } from '../lib/cicd-stack';
+import { EcsStack } from '../lib/ecs-stack';
 
+const REPO_NAME='BulletinWebsiteRepo';
+ 
 const app = new cdk.App();
-new EcsFargateCicdStack1(app, 'EcsFargateCicdStack');
+new CiCdStack(app, 'CiCdStack');
+
+// new EcsStack(app,'EcsStack',REPO_NAME);
+
