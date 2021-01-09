@@ -37,9 +37,9 @@ export class EcsFargateCicdStack1 extends cdk.Stack {
       vpc: vpc,
     });
     
-     cluster.addCapacity('DefaultAutoScalingGroup', {
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO)
-    });
+    // cluster.addCapacity('DefaultAutoScalingGroup', {
+    //   instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO)
+    // });
 
     const logging = new ecs.AwsLogDriver({
       streamPrefix: 'ecs-logs'
@@ -66,56 +66,46 @@ export class EcsFargateCicdStack1 extends cdk.Stack {
     });
   const ecrRepo = new ecr.Repository(this,'BulletinWebsiteRepo');
   
-    // const taskDef = new ecs.FargateTaskDefinition(this,'ecs-taskdef',{
-    //   taskRole:taskRole
-    // });
-
+  
+    const taskDef = new ecs.FargateTaskDefinition(this,'ecs-taskdef',{
+      taskRole:taskRole
+    });
+taskDef.addToExecutionRolePolicy(executionRolePolicy); 
     
     
-    // const container = taskDef.addContainer('flask-app',{
-    //   image: ecs.ContainerImage.fromEcrRepository(ecrRepo,"latest"),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
-    //   memoryLimitMiB:256,
-    //   cpu:256,
-    //   logging
-    // });
-
-    
-
-    // const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this,'ecs-service',{
-    //   cluster:cluster,
-    //   taskDefinition:taskDef,
-    //   publicLoadBalancer:true,
-    //   desiredCount:1,
-    //   listenerPort:80
-    // });
-    
-      const taskDef = new ecs.Ec2TaskDefinition(this, "MyTaskDefinition");
-      
-      taskDef.addToExecutionRolePolicy(executionRolePolicy); 
-      
-  const container =   taskDef.addContainer("AppContainer", {
-      image: ecs.ContainerImage.fromEcrRepository(ecrRepo,"latest"),
-      memoryLimitMiB: 512,
-      logging,
+    const container = taskDef.addContainer('BulletinWebsiteRepo',{
+      image: ecs.ContainerImage.fromEcrRepository(ecrRepo,"latest"),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
+      memoryLimitMiB:256,
+      cpu:256,
+      logging
     });
     
-container.addPortMappings({
+
+    container.addPortMappings({
       containerPort:8080,
       protocol:ecs.Protocol.TCP
     });
 
-    // Instantiate ECS Service with just cluster and image
-   const ecsService= new ecs.Ec2Service(this, "Ec2Service", {
-      cluster,
-      taskDefinition: taskDef,
-    });
 
+//     const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this,'ecs-service',{
+//       cluster:cluster,
+//       taskDefinition:taskDef,
+//       publicLoadBalancer:true,
+//       desiredCount:1,
+//       listenerPort:80
+//     });
+    
+    
+     
+    
     // const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
     // scaling.scaleOnCpuUtilization('CpuScaling',{
     //   targetUtilizationPercent:10,
     //   scaleInCooldown:cdk.Duration.seconds(60),
     //   scaleOutCooldown:cdk.Duration.seconds(60)
     // });
+  
+   
 
  
  const codeCommitRole: iam.IRole | undefined = new iam.Role(this, 'CodeCommitRole', {
@@ -166,11 +156,11 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
             ]
           }
         },
-        // artifacts: {
-        //   files: [
-        //     'imagedefinitions.json'
-        //   ]
-        // }
+        artifacts: {
+          files: [
+            'imagedefinitions.json'
+          ]
+        }
       })
     });
  
@@ -198,12 +188,14 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
     // const manualApprovalAction = new codepipeline_actions.ManualApprovalAction({
     //   actionName: 'Approve',
     // });
+    
+  
 
-    const deployAction = new codepipeline_actions.EcsDeployAction({
-      actionName: 'DeployAction',
-      service: ecsService,
-      imageFile: new codepipeline.ArtifactPath(buildOutput, `imagedefinitions.json`)
-    });
+    // const deployAction = new codepipeline_actions.EcsDeployAction({
+    //   actionName: 'DeployAction',
+    //   service: fargateService.service,
+    //   imageFile: new codepipeline.ArtifactPath(buildOutput, `imagedefinitions.json`)
+    // });
 
     // PIPELINE STAGES
 
@@ -221,10 +213,10 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
         //   stageName: 'Approve',
         //   actions: [manualApprovalAction],
         // },
-        {
-          stageName: 'Deploy-to-ECS',
-          actions: [deployAction],
-        }
+        // {
+        //   stageName: 'Deploy-to-ECS',
+        //   actions: [deployAction],
+        // }
       ]
     });
 
@@ -263,7 +255,7 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
 
     //OUTPUT
 
-    // new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: ecsService});
+    // new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: fargateService.loadBalancer.loadBalancerDnsName});
     new cdk.CfnOutput(this, 'Progess', { value: 'Finished 100%' });
 
   }
