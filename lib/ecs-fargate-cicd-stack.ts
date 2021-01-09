@@ -14,14 +14,10 @@ import s3 = require('@aws-cdk/aws-s3');
 import path = require('path');
 
 
-export class EcsFargateCicdStack extends cdk.Stack {
+export class EcsFargateCicdStack1 extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
-    
-     const tokengithub = cdk.SecretValue.secretsManager('git_token');
      
-     //TODO: DELETE later
-     //new cdk.CfnOutput(this, 'token github', tokengithub);
 
     /**
      * Create a new VPC with single NAT Gateway
@@ -63,42 +59,47 @@ export class EcsFargateCicdStack extends cdk.Stack {
         "logs:PutLogEvents"
       ]
     });
+  const ecrRepo = new ecr.Repository(this,'BulletinWebsiteRepo');
+  
+    // const taskDef = new ecs.FargateTaskDefinition(this,'ecs-taskdef',{
+    //   taskRole:taskRole
+    // });
 
-    const taskDef = new ecs.FargateTaskDefinition(this,'ecs-taskdef',{
-      taskRole:taskRole
-    });
-
-    taskDef.addToExecutionRolePolicy(executionRolePolicy);
+    // taskDef.addToExecutionRolePolicy(executionRolePolicy);
     
-    const ecrRepo = new ecr.Repository(this,'BulletinWebsiteRepo');
+   
 
-    const container = taskDef.addContainer('flask-app',{
-      image: ecs.ContainerImage.fromEcrRepository(ecrRepo,"latest"),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
-      memoryLimitMiB:256,
-      cpu:256,
-      logging
-    });
+    // const container = taskDef.addContainer('flask-app',{
+    //   image: ecs.ContainerImage.fromEcrRepository(ecrRepo,"latest"),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
+    //   memoryLimitMiB:256,
+    //   cpu:256,
+    //   logging
+    // });
 
-    container.addPortMappings({
-      containerPort:8080,
-      protocol:ecs.Protocol.TCP
-    });
+    // container.addPortMappings({
+    //   containerPort:8080,
+    //   protocol:ecs.Protocol.TCP
+    // });
 
-    const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this,'ecs-service',{
-      cluster:cluster,
-      taskDefinition:taskDef,
-      publicLoadBalancer:true,
-      desiredCount:3,
-      listenerPort:80
-    });
+    // const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this,'ecs-service',{
+    //   cluster:cluster,
+    //   taskDefinition:taskDef,
+    //   publicLoadBalancer:true,
+    //   desiredCount:3,
+    //   listenerPort:8080
+    // });
 
-    const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
-    scaling.scaleOnCpuUtilization('CpuScaling',{
-      targetUtilizationPercent:10,
-      scaleInCooldown:cdk.Duration.seconds(60),
-      scaleOutCooldown:cdk.Duration.seconds(60)
-    });
+    // const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
+    // scaling.scaleOnCpuUtilization('CpuScaling',{
+    //   targetUtilizationPercent:10,
+    //   scaleInCooldown:cdk.Duration.seconds(60),
+    //   scaleOutCooldown:cdk.Duration.seconds(60)
+    // });
 
+ 
+ const codeCommitRole: iam.IRole | undefined = new iam.Role(this, 'CodeCommitRole', {
+  assumedBy: new iam.ServicePrincipal('codecommit.amazonaws.com'),    
+});
  
 const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRepo', 'bullettin');
  
@@ -106,6 +107,7 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
     const project  = new codebuild.Project(this,'BulletinWebsiteProject',{
       projectName:`${this.stackName}`,
       source:codebuild.Source.codeCommit({repository:bulletinRepo}), 
+      role:clusterAdmin,
       environment:{
         buildImage:codebuild.LinuxBuildImage.AMAZON_LINUX_2_2,
         privileged:true
@@ -128,7 +130,7 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
             ]
           },
           build:{
-            commands:[ 
+            commands:[  
               `docker build -t $ECR_REPO_URI:$TAG .`,
               '$(aws ecr get-login --no-include-email)',
               'docker push $ECR_REPO_URI:$TAG'
@@ -172,15 +174,15 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
       outputs: [buildOutput], // optional
     });
 
-    const manualApprovalAction = new codepipeline_actions.ManualApprovalAction({
-      actionName: 'Approve',
-    });
+    // const manualApprovalAction = new codepipeline_actions.ManualApprovalAction({
+    //   actionName: 'Approve',
+    // });
 
-    const deployAction = new codepipeline_actions.EcsDeployAction({
-      actionName: 'DeployAction',
-      service: fargateService.service,
-      imageFile: new codepipeline.ArtifactPath(buildOutput, `imagedefinitions.json`)
-    });
+    // const deployAction = new codepipeline_actions.EcsDeployAction({
+    //   actionName: 'DeployAction',
+    //   service: fargateService.service,
+    //   imageFile: new codepipeline.ArtifactPath(buildOutput, `imagedefinitions.json`)
+    // });
 
     // PIPELINE STAGES
 
@@ -194,14 +196,14 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
           stageName: 'Build',
           actions: [buildAction],
         },
-        {
-          stageName: 'Approve',
-          actions: [manualApprovalAction],
-        },
-        {
-          stageName: 'Deploy-to-ECS',
-          actions: [deployAction],
-        }
+        // {
+        //   stageName: 'Approve',
+        //   actions: [manualApprovalAction],
+        // },
+        // {
+        //   stageName: 'Deploy-to-ECS',
+        //   actions: [deployAction],
+        // }
       ]
     });
 
@@ -219,7 +221,8 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
 
     //OUTPUT
 
-    new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: fargateService.loadBalancer.loadBalancerDnsName });
+    // new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: fargateService.loadBalancer.loadBalancerDnsName });
+    new cdk.CfnOutput(this, 'Progess', { value: 'Finished 100%' });
 
   }
 }
