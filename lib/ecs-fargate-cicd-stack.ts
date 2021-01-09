@@ -150,7 +150,7 @@ export class EcsFargateCicdStack1 extends cdk.Stack {
           post_build: {
             commands: [
               'echo "In Post-Build Stage"',
-              'cd ..',
+              // 'cd ..',
               "printf '[{\"name\":\"node-bulletin-board\",\"imageUri\":\"%s\"}]' $ECR_REPO_URI:$TAG > imagedefinitions.json",
               "pwd; ls -al; cat imagedefinitions.json"
             ]
@@ -223,40 +223,16 @@ export class EcsFargateCicdStack1 extends cdk.Stack {
     ecrRepo.grantPullPush(project.role!)
     project.addToRolePolicy(new iam.PolicyStatement({
       actions: [
-        "ecs:*",
-        "codebuild:*",
-        "ecr:*",
-        "codecommit:*",
-        "cloudwatch:GetMetricStatistics",
-        "ec2:DescribeVpcs",
-        "ec2:DescribeSecurityGroups",
-        "ec2:DescribeSubnets",
-        "ecr:DescribeRepositories",
-        "elasticfilesystem:*",
-        "events:*",
-        "logs:GetLogEvents",
-        "s3:*" 
+        "*" 
       ],
-      resources: [`${cluster.clusterArn}`],
+      resources: [`*`],
     }));
 
     ecsPipeline.addToRolePolicy(new iam.PolicyStatement({
       actions: [
-        "ecs:*",
-        "codebuild:*",
-        "ecr:*",
-        "codecommit:*",
-        "cloudwatch:GetMetricStatistics",
-        "ec2:DescribeVpcs",
-        "ec2:DescribeSecurityGroups",
-        "ec2:DescribeSubnets",
-        "ecr:DescribeRepositories",
-        "elasticfilesystem:*",
-        "events:*",
-        "logs:GetLogEvents",
-        "s3:*" 
+        "*" 
       ],
-      resources: [`${cluster.clusterArn}`],
+      resources: [`*`],
     }));
 
     //OUTPUT
