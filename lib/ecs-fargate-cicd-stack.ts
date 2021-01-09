@@ -18,7 +18,7 @@ import path = require('path');
 export class EcsFargateCicdStack1 extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
-     
+
 
     /**
      * Create a new VPC with single NAT Gateway
@@ -36,7 +36,7 @@ export class EcsFargateCicdStack1 extends cdk.Stack {
     const cluster = new ecs.Cluster(this, "ecs-cluster", {
       vpc: vpc,
     });
-    
+
     // cluster.addCapacity('DefaultAutoScalingGroup', {
     //   instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO)
     // });
@@ -64,84 +64,84 @@ export class EcsFargateCicdStack1 extends cdk.Stack {
         "logs:PutLogEvents"
       ]
     });
-  const ecrRepo = new ecr.Repository(this,'BulletinWebsiteRepo');
-  
-  
-    const taskDef = new ecs.FargateTaskDefinition(this,'ecs-taskdef',{
-      taskRole:taskRole
+    const ecrRepo = new ecr.Repository(this, 'BulletinWebsiteRepo');
+
+
+    const taskDef = new ecs.FargateTaskDefinition(this, 'ecs-taskdef', {
+      taskRole: taskRole
     });
-taskDef.addToExecutionRolePolicy(executionRolePolicy); 
-    
-    
-    const container = taskDef.addContainer('BulletinWebsiteRepo',{
-      image: ecs.ContainerImage.fromEcrRepository(ecrRepo,"latest"),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
-      memoryLimitMiB:256,
-      cpu:256,
+    taskDef.addToExecutionRolePolicy(executionRolePolicy);
+
+
+    const container = taskDef.addContainer('BulletinWebsiteRepo', {
+      image: ecs.ContainerImage.fromEcrRepository(ecrRepo, "latest"),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
+      memoryLimitMiB: 256,
+      cpu: 256,
       logging
     });
-    
+
 
     container.addPortMappings({
-      containerPort:8080,
-      protocol:ecs.Protocol.TCP
+      containerPort: 8080,
+      protocol: ecs.Protocol.TCP
     });
 
 
-//     const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this,'ecs-service',{
-//       cluster:cluster,
-//       taskDefinition:taskDef,
-//       publicLoadBalancer:true,
-//       desiredCount:1,
-//       listenerPort:80
-//     });
-    
-    
-     
-    
+    //     const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this,'ecs-service',{
+    //       cluster:cluster,
+    //       taskDefinition:taskDef,
+    //       publicLoadBalancer:true,
+    //       desiredCount:1,
+    //       listenerPort:80
+    //     });
+
+
+
+
     // const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
     // scaling.scaleOnCpuUtilization('CpuScaling',{
     //   targetUtilizationPercent:10,
     //   scaleInCooldown:cdk.Duration.seconds(60),
     //   scaleOutCooldown:cdk.Duration.seconds(60)
     // });
-  
-   
 
- 
- const codeCommitRole: iam.IRole | undefined = new iam.Role(this, 'CodeCommitRole', {
-  assumedBy: new iam.ServicePrincipal('codecommit.amazonaws.com'),    
-});
- 
-const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRepo', 'bullettin');
- 
+
+
+
+    const codeCommitRole: iam.IRole | undefined = new iam.Role(this, 'CodeCommitRole', {
+      assumedBy: new iam.ServicePrincipal('codecommit.amazonaws.com'),
+    });
+
+    const bulletinRepo = codecommit.Repository.fromRepositoryName(this, 'ImportedRepo', 'bullettin');
+
     // CODEBUILD - project
-    const project  = new codebuild.Project(this,'BulletinWebsiteProject',{
-      projectName:`${this.stackName}`,
-      source:codebuild.Source.codeCommit({repository:bulletinRepo}), 
+    const project = new codebuild.Project(this, 'BulletinWebsiteProject', {
+      projectName: `${this.stackName}`,
+      source: codebuild.Source.codeCommit({ repository: bulletinRepo }),
       // role:codeCommitRole,
-      environment:{
-        buildImage:codebuild.LinuxBuildImage.AMAZON_LINUX_2_2,
-        privileged:true
+      environment: {
+        buildImage: codebuild.LinuxBuildImage.AMAZON_LINUX_2_2,
+        privileged: true
       },
-      environmentVariables:{
-        'CLUSTER_NAME':{
-          value:`${cluster.clusterName}`
+      environmentVariables: {
+        'CLUSTER_NAME': {
+          value: `${cluster.clusterName}`
         },
-        'ECR_REPO_URI':{
-          value:`${ecrRepo.repositoryUri}`
+        'ECR_REPO_URI': {
+          value: `${ecrRepo.repositoryUri}`
         }
       },
-      buildSpec:codebuild.BuildSpec.fromObject({
-        version:"0.2",
-        phases:{
-          pre_build:{
-            commands:[
+      buildSpec: codebuild.BuildSpec.fromObject({
+        version: "0.2",
+        phases: {
+          pre_build: {
+            commands: [
               'env',
               'export TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION}'
             ]
           },
-          build:{
-            commands:[  
+          build: {
+            commands: [
               `docker build -t $ECR_REPO_URI:$TAG .`,
               '$(aws ecr get-login --no-include-email)',
               'docker push $ECR_REPO_URI:$TAG'
@@ -163,19 +163,19 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
         }
       })
     });
- 
+
     // ***PIPELINE ACTIONS***
 
     const sourceOutput = new codepipeline.Artifact();
     const buildOutput = new codepipeline.Artifact();
 
-    
- 
-    
+
+
+
     const sourceAction = new codepipeline_actions.CodeCommitSourceAction({
-      actionName:'CodeCommit_Source',
-      repository:bulletinRepo,
-      output:sourceOutput
+      actionName: 'CodeCommit_Source',
+      repository: bulletinRepo,
+      output: sourceOutput
     })
 
     const buildAction = new codepipeline_actions.CodeBuildAction({
@@ -188,8 +188,8 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
     // const manualApprovalAction = new codepipeline_actions.ManualApprovalAction({
     //   actionName: 'Approve',
     // });
-    
-  
+
+
 
     // const deployAction = new codepipeline_actions.EcsDeployAction({
     //   actionName: 'DeployAction',
@@ -199,7 +199,7 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
 
     // PIPELINE STAGES
 
-    new codepipeline.Pipeline(this, 'MyECSPipeline', {
+   const ecsPipeline= new codepipeline.Pipeline(this, 'MyECSPipeline', {
       stages: [
         {
           stageName: 'Source',
@@ -223,33 +223,39 @@ const bulletinRepo =  codecommit.Repository.fromRepositoryName(this, 'ImportedRe
     ecrRepo.grantPullPush(project.role!)
     project.addToRolePolicy(new iam.PolicyStatement({
       actions: [
-        "ecs:DescribeCluster",
+        "ecs:*",
         "codebuild:*",
-                "codecommit:GetBranch",
-                "codecommit:GetCommit",
-                "codecommit:GetRepository",
-                "codecommit:ListBranches",
-                "codecommit:ListRepositories",
-                "cloudwatch:GetMetricStatistics",
-                "ec2:DescribeVpcs",
-                "ec2:DescribeSecurityGroups",
-                "ec2:DescribeSubnets",
-                "ecr:DescribeRepositories",
-                "ecr:ListImages",
-                "elasticfilesystem:DescribeFileSystems",
-                "events:DeleteRule",
-                "events:DescribeRule",
-                "events:DisableRule",
-                "events:EnableRule",
-                "events:ListTargetsByRule",
-                "events:ListRuleNamesByTarget",
-                "events:PutRule",
-                "events:PutTargets",
-                "events:RemoveTargets",
-                "logs:GetLogEvents",
-                "s3:GetBucketLocation",
-                "s3:ListAllMyBuckets"
-        ],
+        "ecr:*",
+        "codecommit:*",
+        "cloudwatch:GetMetricStatistics",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ecr:DescribeRepositories",
+        "elasticfilesystem:*",
+        "events:*",
+        "logs:GetLogEvents",
+        "s3:*" 
+      ],
+      resources: [`${cluster.clusterArn}`],
+    }));
+
+    ecsPipeline.addToRolePolicy(new iam.PolicyStatement({
+      actions: [
+        "ecs:*",
+        "codebuild:*",
+        "ecr:*",
+        "codecommit:*",
+        "cloudwatch:GetMetricStatistics",
+        "ec2:DescribeVpcs",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ecr:DescribeRepositories",
+        "elasticfilesystem:*",
+        "events:*",
+        "logs:GetLogEvents",
+        "s3:*" 
+      ],
       resources: [`${cluster.clusterArn}`],
     }));
 
