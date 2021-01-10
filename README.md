@@ -162,4 +162,8 @@ Once code commited and CodePipeline is kicked off, it will deploy the applicatio
 ## License
 This library is licensed under the MIT-0 License. See the [LICENSE](/LICENSE) file.
 
-cdk deploy --all --require-approval never
+
+cdk destroy  
+y
+cdk deploy --require-approval never
+cdk ls

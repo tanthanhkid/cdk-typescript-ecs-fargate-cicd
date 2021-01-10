@@ -8,7 +8,7 @@ import { EcsStack } from '../lib/ecs-stack';
 const REPO_NAME='BulletinWebsiteRepo';
  
 const app = new cdk.App();
-new CiCdStack(app, 'CiCdStack');
+new CiCdStack(app, 'CiCdStackV8');
 
 // new EcsStack(app,'EcsStack',REPO_NAME);
 

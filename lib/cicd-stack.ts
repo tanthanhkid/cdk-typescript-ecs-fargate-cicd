@@ -46,7 +46,7 @@ export class CiCdStack extends cdk.Stack {
     // });
 
 
-    this.ecrRepo = new ecr.Repository(this, 'BulletinWebsiteRepo');
+    this.ecrRepo = new ecr.Repository(this, 'docker_tutorialRepo');
 
     // const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
     // scaling.scaleOnCpuUtilization('CpuScaling',{
@@ -62,10 +62,10 @@ export class CiCdStack extends cdk.Stack {
     //   assumedBy: new iam.ServicePrincipal('codecommit.amazonaws.com'),
     // });
 
-    const bulletinRepo = codecommit.Repository.fromRepositoryName(this, 'ImportedRepo', 'bullettin');
+    const bulletinRepo = codecommit.Repository.fromRepositoryName(this, 'ImportedRepo', 'docker_tutorial');
 
     // CODEBUILD - project
-    const project = new codebuild.Project(this, 'BulletinWebsiteProject', {
+    const project = new codebuild.Project(this, 'docker_tutorialProject', {
       projectName: `${this.stackName}`,
       source: codebuild.Source.codeCommit({ repository: bulletinRepo }),
       // role:codeCommitRole,
@@ -80,28 +80,28 @@ export class CiCdStack extends cdk.Stack {
         'ECR_REPO_URI': {
           value: `${this.ecrRepo.repositoryUri}`
         }
-      },
+      }, 
       buildSpec: codebuild.BuildSpec.fromObject({
         version: "0.2",
         phases: {
           pre_build: {
             commands: [
               'env',
-              'export TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION}'
+              // 'export TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION}'
             ]
           },
           build: {
             commands: [
-              `docker build -t $ECR_REPO_URI:$TAG .`,
+              `docker build -t $ECR_REPO_URI .`,
               '$(aws ecr get-login --no-include-email)',
-              'docker push $ECR_REPO_URI:$TAG'
+              'docker push $ECR_REPO_URI'
             ]
           },
           post_build: {
             commands: [
               'echo "In Post-Build Stage"',
-              'cd ..',
-              "printf '[{\"name\":\"node-bulletin-board\",\"imageUri\":\"%s\"}]' $ECR_REPO_URI:$TAG > imagedefinitions.json",
+              // 'cd ..',
+              `printf '[{\"name\":\"${this.ecrRepo.repositoryName}\",\"imageUri\":\"%s\"}]' $ECR_REPO_URI:latest > imagedefinitions.json`,
               "pwd; ls -al; cat imagedefinitions.json"
             ]
           }
@@ -159,7 +159,7 @@ export class CiCdStack extends cdk.Stack {
       ]
     });
 
-    this.ecrRepo.grantPullPush(project.role!)
+    
     project.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         "*"
@@ -173,6 +173,8 @@ export class CiCdStack extends cdk.Stack {
       ],
       resources: [`*`],
     }));
+    this.ecrRepo.grantPullPush(project.role!);
+    
 
     //ECS step
     const vpc = new ec2.Vpc(this, 'ecs-cdk-vpc', {
@@ -197,30 +199,26 @@ export class CiCdStack extends cdk.Stack {
       roleName: `ecs-taskRole-${this.stackName}`,
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com')
     });
-
+    this.ecrRepo.grantPullPush(taskRole);
     // ***ECS Contructs***
 
     const executionRolePolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      resources: ['*'],
-      actions: [
-        "ecr:GetAuthorizationToken",
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:BatchGetImage",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
+      resources: ['*'], 
+      actions: [ 
+        "*"
       ]
     });
 
+   
     const taskDef = new ecs.FargateTaskDefinition(this, 'ecs-taskdef', {
       taskRole: taskRole
     });
     taskDef.addToExecutionRolePolicy(executionRolePolicy);
 
 
-    const container = taskDef.addContainer('BulletinWebsiteRepo', {
-      image: ecs.ContainerImage.fromEcrRepository(this.ecrRepo, "latest"),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
+    const container = taskDef.addContainer('docker_tutorialV8', {
+      image: ecs.ContainerImage.fromEcrRepository(this.ecrRepo),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
       memoryLimitMiB: 256,
       cpu: 256,
       logging
@@ -228,7 +226,7 @@ export class CiCdStack extends cdk.Stack {
 
 
     container.addPortMappings({
-      containerPort: 8080,
+      containerPort: 80, 
       protocol: ecs.Protocol.TCP
     });
 
@@ -242,16 +240,16 @@ export class CiCdStack extends cdk.Stack {
     });
 
 
-    const deployAction = new codepipeline_actions.EcsDeployAction({
-      actionName: 'DeployAction',
-      service: fargateService.service,
-      imageFile: new codepipeline.ArtifactPath(this.buildOutput, `imagedefinitions.json`)
-    });
+    // const deployAction = new codepipeline_actions.EcsDeployAction({
+    //   actionName: 'DeployAction',
+    //   service: fargateService.service,
+    //   imageFile: new codepipeline.ArtifactPath(this.buildOutput, `imagedefinitions.json`)
+    // });
 
-    this.ecsPipeline.addStage({
-      stageName: 'Deploy-to-ECS',
-      actions: [deployAction],
-    })
+    // this.ecsPipeline.addStage({
+    //   stageName: 'Deploy-to-ECS',
+    //   actions: [deployAction],
+    // })
 
     //ISSUE
 
