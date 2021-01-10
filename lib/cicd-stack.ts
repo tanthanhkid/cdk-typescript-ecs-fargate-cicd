@@ -48,12 +48,6 @@ export class CiCdStack extends cdk.Stack {
 
     this.ecrRepo = new ecr.Repository(this, 'docker_tutorialRepo');
 
-    // const scaling = fargateService.service.autoScaleTaskCount({maxCapacity:6});
-    // scaling.scaleOnCpuUtilization('CpuScaling',{
-    //   targetUtilizationPercent:10,
-    //   scaleInCooldown:cdk.Duration.seconds(60),
-    //   scaleOutCooldown:cdk.Duration.seconds(60)
-    // });
 
 
 
@@ -80,7 +74,7 @@ export class CiCdStack extends cdk.Stack {
         'ECR_REPO_URI': {
           value: `${this.ecrRepo.repositoryUri}`
         }
-      }, 
+      },
       buildSpec: codebuild.BuildSpec.fromObject({
         version: "0.2",
         phases: {
@@ -101,7 +95,7 @@ export class CiCdStack extends cdk.Stack {
             commands: [
               'echo "In Post-Build Stage"',
               // 'cd ..',
-              `printf '[{\"name\":\"${this.ecrRepo.repositoryName}\",\"imageUri\":\"%s\"}]' $ECR_REPO_URI:latest > imagedefinitions.json`,
+              `printf '[{\"name\":\"docker_tutorialContainer\",\"imageUri\":\"%s\"}]' $ECR_REPO_URI:latest > imagedefinitions.json`,
               "pwd; ls -al; cat imagedefinitions.json"
             ]
           }
@@ -132,9 +126,9 @@ export class CiCdStack extends cdk.Stack {
       outputs: [this.buildOutput], // optional
     });
 
-    // const manualApprovalAction = new codepipeline_actions.ManualApprovalAction({
-    //   actionName: 'Approve',
-    // });
+    const manualApprovalAction = new codepipeline_actions.ManualApprovalAction({
+      actionName: 'Approve',
+    });
 
     // PIPELINE STAGES
 
@@ -148,18 +142,14 @@ export class CiCdStack extends cdk.Stack {
           stageName: 'Build',
           actions: [buildAction],
         },
-        // {
-        //   stageName: 'Approve',
-        //   actions: [manualApprovalAction],
-        // },
-        // {
-        //   stageName: 'Deploy-to-ECS',
-        //   actions: [deployAction],
-        // }
+        {
+          stageName: 'Approve',
+          actions: [manualApprovalAction],
+        }, 
       ]
     });
 
-    
+
     project.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         "*"
@@ -174,7 +164,6 @@ export class CiCdStack extends cdk.Stack {
       resources: [`*`],
     }));
     this.ecrRepo.grantPullPush(project.role!);
-    
 
     //ECS step
     const vpc = new ec2.Vpc(this, 'ecs-cdk-vpc', {
@@ -204,20 +193,20 @@ export class CiCdStack extends cdk.Stack {
 
     const executionRolePolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      resources: ['*'], 
-      actions: [ 
+      resources: ['*'],
+      actions: [
         "*"
       ]
     });
 
-   
+
     const taskDef = new ecs.FargateTaskDefinition(this, 'ecs-taskdef', {
       taskRole: taskRole
     });
     taskDef.addToExecutionRolePolicy(executionRolePolicy);
 
 
-    const container = taskDef.addContainer('docker_tutorialV8', {
+    const container = taskDef.addContainer('docker_tutorialContainer', {
       image: ecs.ContainerImage.fromEcrRepository(this.ecrRepo),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
       memoryLimitMiB: 256,
       cpu: 256,
@@ -226,7 +215,7 @@ export class CiCdStack extends cdk.Stack {
 
 
     container.addPortMappings({
-      containerPort: 80, 
+      containerPort: 80,
       protocol: ecs.Protocol.TCP
     });
 
@@ -239,25 +228,34 @@ export class CiCdStack extends cdk.Stack {
       listenerPort: 80
     });
 
+    const scaling = fargateService.service.autoScaleTaskCount({ maxCapacity: 6 });
+    scaling.scaleOnCpuUtilization('CpuScaling', {
+      targetUtilizationPercent: 10,
+      scaleInCooldown: cdk.Duration.seconds(60),
+      scaleOutCooldown: cdk.Duration.seconds(60)
+    });
 
-    // const deployAction = new codepipeline_actions.EcsDeployAction({
-    //   actionName: 'DeployAction',
-    //   service: fargateService.service,
-    //   imageFile: new codepipeline.ArtifactPath(this.buildOutput, `imagedefinitions.json`)
-    // });
+ 
+    // ***END ECS Contructs***
 
-    // this.ecsPipeline.addStage({
-    //   stageName: 'Deploy-to-ECS',
-    //   actions: [deployAction],
-    // })
 
-    //ISSUE
+    const deployAction = new codepipeline_actions.EcsDeployAction({
+      actionName: 'DeployAction',
+      service: fargateService.service,
+      imageFile: new codepipeline.ArtifactPath(this.buildOutput, `imagedefinitions.json`)
+    });
 
-    // #1. When integrate code pipeline and ecs  deployment action, cdk not provision codepipeline and ecs task stuck to read image from empty repo
+    this.ecsPipeline.addStage({
+      stageName: 'Deploy-to-ECS',
+      actions: [deployAction],
+    })
 
-    // #2. when create task def and task by hand, task alert a docker image error
+    //ISSUE: NONE
 
-    // new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: fargateService.loadBalancer.loadBalancerDnsName});
+    // #1. When provision ECS task and pipeline at the same time, pipeline wait for task to run sucess but Task wait for image in ECR,
+    // Manual click start build in CodeBuild solve the problem by give ECS Task first image
+
+    new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: fargateService.loadBalancer.loadBalancerDnsName });
     new cdk.CfnOutput(this, 'Progess', { value: 'Finished 100%' });
 
   }
