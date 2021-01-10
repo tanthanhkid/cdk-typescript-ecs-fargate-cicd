@@ -207,7 +207,8 @@ export class CiCdStack extends cdk.Stack {
 
 
     const container = taskDef.addContainer('docker_tutorialContainer', {
-      image: ecs.ContainerImage.fromEcrRepository(this.ecrRepo),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
+      image:ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
+      //image: ecs.ContainerImage.fromEcrRepository(this.ecrRepo),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
       memoryLimitMiB: 256,
       cpu: 256,
       logging
