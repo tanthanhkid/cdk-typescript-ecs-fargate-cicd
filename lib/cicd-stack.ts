@@ -253,8 +253,6 @@ export class CiCdStack extends cdk.Stack {
 
     //ISSUE: NONE
 
-    // #1. When provision ECS task and pipeline at the same time, pipeline wait for task to run sucess but Task wait for image in ECR,
-    // Manual click start build in CodeBuild solve the problem by give ECS Task first image
 
     new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: fargateService.loadBalancer.loadBalancerDnsName });
     new cdk.CfnOutput(this, 'Progess', { value: 'Finished 100%' });
