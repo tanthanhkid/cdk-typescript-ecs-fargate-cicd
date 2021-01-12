@@ -9,48 +9,35 @@ import codecommit = require('@aws-cdk/aws-codecommit');
 import targets = require('@aws-cdk/aws-events-targets');
 import codedeploy = require('@aws-cdk/aws-codedeploy');
 import codepipeline = require('@aws-cdk/aws-codepipeline');
-import codepipeline_actions = require('@aws-cdk/aws-codepipeline-actions');
-import elbv2 = require('@aws-cdk/aws-elasticloadbalancingv2');
-import s3 = require('@aws-cdk/aws-s3');
+import codepipeline_actions = require('@aws-cdk/aws-codepipeline-actions'); 
 import path = require('path');
 
 
 export class CiCdStack extends cdk.Stack {
 
-  ecrRepo: ecr.Repository;
-  ecsPipeline: codepipeline.Pipeline;
-  buildOutput: codepipeline.Artifact
-
-  get getEcrRepo(): ecr.Repository {
-    return this.ecrRepo;
-  }
-  get getEcsPipeline(): codepipeline.Pipeline {
-    return this.ecsPipeline;
-  }
-  get getBuildOutput(): codepipeline.Artifact {
-    return this.buildOutput;
-  }
-
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
  
-    const CLUSTER_NAME = "ecsCICD-cluster";
-    const REPO_NAME = "ecsCICD";
-    const DOCKER_PORT=80;
-    const LISTEN_PORT=80;
-    const MEMORY=256;
-    const CPU=256;
+    // *** CONFIG ***
+    
+    const REPO_NAME = "ecsCICD"; // CODE COMMIT REPOSITORY NAME
+    const DOCKER_PORT=80; // DOCKER EXPOSED PORT FROM YOUR CODE
+    const LISTEN_PORT=80; // PUBLIC PORT FOR LOAD BALANCER DNS
+    const MEMORY=256; // vMEMORY PER TASK (MB)
+    const CPU=256; // vCPU PER TASK (MB)
+    
+    // *** STACK CONSTRUCT START ***
  
-
-    this.ecrRepo = new ecr.Repository(this, REPO_NAME+"ECRRepo");
+    const CLUSTER_NAME = this.stackName+ "-cluster";
+    const ecrRepo = new ecr.Repository(this, REPO_NAME+"ECRRepo");
    
+    // ***CodeCommit Contructs***
     const codecommitRepo = new codecommit.Repository(this, REPO_NAME+"Repository", { repositoryName: REPO_NAME+"Repository"});
 
     // ***CodeBuild Contructs***
     const project = new codebuild.Project(this, REPO_NAME+'Project', {
       projectName: `${this.stackName}`,
-      source: codebuild.Source.codeCommit({ repository: codecommitRepo }),
-      // role:codeCommitRole,
+      source: codebuild.Source.codeCommit({ repository: codecommitRepo }), 
       environment: {
         buildImage: codebuild.LinuxBuildImage.AMAZON_LINUX_2_2,
         privileged: true
@@ -60,7 +47,7 @@ export class CiCdStack extends cdk.Stack {
           value: `${CLUSTER_NAME}`
         },
         'ECR_REPO_URI': {
-          value: `${this.ecrRepo.repositoryUri}`
+          value: `${ecrRepo.repositoryUri}`
         }
       },
       buildSpec: codebuild.BuildSpec.fromObject({
@@ -68,8 +55,7 @@ export class CiCdStack extends cdk.Stack {
         phases: {
           pre_build: {
             commands: [
-              'env',
-              // 'export TAG=${CODEBUILD_RESOLVED_SOURCE_VERSION}'
+              'env', 
             ]
           },
           build: {
@@ -81,8 +67,7 @@ export class CiCdStack extends cdk.Stack {
           },
           post_build: {
             commands: [
-              'echo "In Post-Build Stage"',
-              // 'cd ..',
+              'echo "In Post-Build Stage"', 
               `printf '[{\"name\":\"${REPO_NAME}Container\",\"imageUri\":\"%s\"}]' $ECR_REPO_URI:latest > imagedefinitions.json`,
               "pwd; ls -al; cat imagedefinitions.json"
             ]
@@ -99,7 +84,7 @@ export class CiCdStack extends cdk.Stack {
     // ***PIPELINE ACTIONS***
 
     const sourceOutput = new codepipeline.Artifact();
-    this.buildOutput = new codepipeline.Artifact();
+    const buildOutput = new codepipeline.Artifact();
 
     const sourceAction = new codepipeline_actions.CodeCommitSourceAction({
       actionName: 'CodeCommit_Source',
@@ -111,16 +96,15 @@ export class CiCdStack extends cdk.Stack {
       actionName: 'CodeBuild',
       project: project,
       input: sourceOutput,
-      outputs: [this.buildOutput],  
+      outputs: [buildOutput],  
     });
 
     const manualApprovalAction = new codepipeline_actions.ManualApprovalAction({
       actionName: 'Approve',
     });
 
-    // PIPELINE STAGES
-
-    this.ecsPipeline = new codepipeline.Pipeline(this, REPO_NAME+'Pipeline', {
+    // PIPELINE STAGES 
+    const ecsPipeline = new codepipeline.Pipeline(this, REPO_NAME+'Pipeline', {
       stages: [
         {
           stageName: 'Source',
@@ -130,10 +114,10 @@ export class CiCdStack extends cdk.Stack {
           stageName: 'Build',
           actions: [buildAction],
         },
-        // {
-        //   stageName: 'Approve',
-        //   actions: [manualApprovalAction],
-        // }, 
+        {
+          stageName: 'Approve',
+          actions: [manualApprovalAction],
+        }, 
       ]
     });
 
@@ -145,15 +129,15 @@ export class CiCdStack extends cdk.Stack {
       resources: [`*`],
     }));
 
-    this.ecsPipeline.addToRolePolicy(new iam.PolicyStatement({
+    ecsPipeline.addToRolePolicy(new iam.PolicyStatement({
       actions: [
         "*"
       ],
       resources: [`*`],
     }));
-    this.ecrRepo.grantPullPush(project.role!);
+    ecrRepo.grantPullPush(project.role!);
 
-    //ECS step
+    // ***ECS Contructs***
     const vpc = new ec2.Vpc(this, this.stackName+'-vpc', {
       cidr: '10.0.0.0/16',
       natGateways: 1,
@@ -176,11 +160,9 @@ export class CiCdStack extends cdk.Stack {
       roleName: `ecs-taskRole-${this.stackName}`,
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com')
     });
-    this.ecrRepo.grantPullPush(taskRole);
+    ecrRepo.grantPullPush(taskRole);
     
-    
-    // ***ECS Contructs***
-
+     
     const executionRolePolicy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       resources: ['*'],
@@ -225,26 +207,20 @@ export class CiCdStack extends cdk.Stack {
       scaleInCooldown: cdk.Duration.seconds(60),
       scaleOutCooldown: cdk.Duration.seconds(60)
     });
-
  
-    // ***END ECS Contructs***
-
-
     const deployAction = new codepipeline_actions.EcsDeployAction({
       actionName: 'DeployAction',
       service: fargateService.service,
-      imageFile: new codepipeline.ArtifactPath(this.buildOutput, `imagedefinitions.json`)
+      imageFile: new codepipeline.ArtifactPath(buildOutput, `imagedefinitions.json`)
     });
 
-    this.ecsPipeline.addStage({
+    ecsPipeline.addStage({
       stageName: 'Deploy-to-ECS',
       actions: [deployAction],
     })
-
-    //ISSUE: NONE
  
-    new cdk.CfnOutput(this, `CodeCommit URI HTTPS`, {
-            exportName: 'CodeCommitURL',
+    new cdk.CfnOutput(this, `CodeCommit`, {
+            exportName: 'URL',
             value: codecommitRepo.repositoryCloneUrlHttp
         });
 
