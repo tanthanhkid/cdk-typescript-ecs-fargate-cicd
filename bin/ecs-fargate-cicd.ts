@@ -2,13 +2,10 @@
 import 'source-map-support/register';
 import * as cdk from '@aws-cdk/core';
  
-import { CiCdStack } from '../lib/cicd-stack';
-import { EcsStack } from '../lib/ecs-stack';
+import { CiCdStack } from '../lib/cicd-stack'; 
 
 const REPO_NAME='BulletinWebsiteRepo';
  
 const app = new cdk.App();
-new CiCdStack(app, 'CiCdStackV11');
-
-// new EcsStack(app,'EcsStack',REPO_NAME);
+new CiCdStack(app, 'EcsCICDBoilerplateStack'); 
 

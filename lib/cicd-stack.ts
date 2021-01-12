@@ -33,35 +33,23 @@ export class CiCdStack extends cdk.Stack {
 
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+ 
+    const CLUSTER_NAME = "ecsCICD-cluster";
+    const REPO_NAME = "ecsCICD";
+    const DOCKER_PORT=80;
+    const LISTEN_PORT=80;
+    const MEMORY=256;
+    const CPU=256;
+ 
 
+    this.ecrRepo = new ecr.Repository(this, REPO_NAME+"ECRRepo");
+   
+    const codecommitRepo = new codecommit.Repository(this, REPO_NAME+"Repository", { repositoryName: REPO_NAME+"Repository"});
 
-    /**
-     * Create a new VPC with single NAT Gateway
-     */
-
-    const CLUSTER_NAME = "ecs-cluster";
-
-    // cluster.addCapacity('DefaultAutoScalingGroup', {
-    //   instanceType: ec2.InstanceType.of(ec2.InstanceClass.T2, ec2.InstanceSize.MICRO)
-    // });
-
-
-    this.ecrRepo = new ecr.Repository(this, 'docker_tutorialRepo');
-
-
-
-
-
-    // const codeCommitRole: iam.IRole | undefined = new iam.Role(this, 'CodeCommitRole', {
-    //   assumedBy: new iam.ServicePrincipal('codecommit.amazonaws.com'),
-    // });
-
-    const bulletinRepo = codecommit.Repository.fromRepositoryName(this, 'ImportedRepo', 'docker_tutorial');
-
-    // CODEBUILD - project
-    const project = new codebuild.Project(this, 'docker_tutorialProject', {
+    // ***CodeBuild Contructs***
+    const project = new codebuild.Project(this, REPO_NAME+'Project', {
       projectName: `${this.stackName}`,
-      source: codebuild.Source.codeCommit({ repository: bulletinRepo }),
+      source: codebuild.Source.codeCommit({ repository: codecommitRepo }),
       // role:codeCommitRole,
       environment: {
         buildImage: codebuild.LinuxBuildImage.AMAZON_LINUX_2_2,
@@ -95,7 +83,7 @@ export class CiCdStack extends cdk.Stack {
             commands: [
               'echo "In Post-Build Stage"',
               // 'cd ..',
-              `printf '[{\"name\":\"docker_tutorialContainer\",\"imageUri\":\"%s\"}]' $ECR_REPO_URI:latest > imagedefinitions.json`,
+              `printf '[{\"name\":\"${REPO_NAME}Container\",\"imageUri\":\"%s\"}]' $ECR_REPO_URI:latest > imagedefinitions.json`,
               "pwd; ls -al; cat imagedefinitions.json"
             ]
           }
@@ -115,7 +103,7 @@ export class CiCdStack extends cdk.Stack {
 
     const sourceAction = new codepipeline_actions.CodeCommitSourceAction({
       actionName: 'CodeCommit_Source',
-      repository: bulletinRepo,
+      repository: codecommitRepo,
       output: sourceOutput
     })
 
@@ -123,7 +111,7 @@ export class CiCdStack extends cdk.Stack {
       actionName: 'CodeBuild',
       project: project,
       input: sourceOutput,
-      outputs: [this.buildOutput], // optional
+      outputs: [this.buildOutput],  
     });
 
     const manualApprovalAction = new codepipeline_actions.ManualApprovalAction({
@@ -132,7 +120,7 @@ export class CiCdStack extends cdk.Stack {
 
     // PIPELINE STAGES
 
-    this.ecsPipeline = new codepipeline.Pipeline(this, 'MyECSPipeline', {
+    this.ecsPipeline = new codepipeline.Pipeline(this, REPO_NAME+'Pipeline', {
       stages: [
         {
           stageName: 'Source',
@@ -142,10 +130,10 @@ export class CiCdStack extends cdk.Stack {
           stageName: 'Build',
           actions: [buildAction],
         },
-        {
-          stageName: 'Approve',
-          actions: [manualApprovalAction],
-        }, 
+        // {
+        //   stageName: 'Approve',
+        //   actions: [manualApprovalAction],
+        // }, 
       ]
     });
 
@@ -166,13 +154,13 @@ export class CiCdStack extends cdk.Stack {
     this.ecrRepo.grantPullPush(project.role!);
 
     //ECS step
-    const vpc = new ec2.Vpc(this, 'ecs-cdk-vpc', {
+    const vpc = new ec2.Vpc(this, this.stackName+'-vpc', {
       cidr: '10.0.0.0/16',
       natGateways: 1,
       maxAzs: 2
     });
 
-    const clusterAdmin = new iam.Role(this, 'AdminRole', {
+    const clusterAdmin = new iam.Role(this, this.stackName+'AdminRole', {
       assumedBy: new iam.AccountRootPrincipal()
     });
 
@@ -181,7 +169,7 @@ export class CiCdStack extends cdk.Stack {
     });
 
     const logging = new ecs.AwsLogDriver({
-      streamPrefix: 'ecs-logs'
+      streamPrefix: this.stackName+'ecs-logs'
     });
 
     const taskRole = new iam.Role(this, `ecs-taskRole-${this.stackName}`, {
@@ -189,6 +177,8 @@ export class CiCdStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com')
     });
     this.ecrRepo.grantPullPush(taskRole);
+    
+    
     // ***ECS Contructs***
 
     const executionRolePolicy = new iam.PolicyStatement({
@@ -200,33 +190,33 @@ export class CiCdStack extends cdk.Stack {
     });
 
 
-    const taskDef = new ecs.FargateTaskDefinition(this, 'ecs-taskdef', {
+    const taskDef = new ecs.FargateTaskDefinition(this,this.stackName+ 'ecs-taskdef', {
       taskRole: taskRole
     });
     taskDef.addToExecutionRolePolicy(executionRolePolicy);
 
 
-    const container = taskDef.addContainer('docker_tutorialContainer', {
+    const container = taskDef.addContainer(REPO_NAME+'Container', {
       image:ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
       //image: ecs.ContainerImage.fromEcrRepository(this.ecrRepo),//ecs.ContainerImage.fromAsset(path.resolve(__dirname, 'bulletin-board-app')),
-      memoryLimitMiB: 256,
-      cpu: 256,
+      memoryLimitMiB: MEMORY,
+      cpu: CPU,
       logging
     });
 
 
     container.addPortMappings({
-      containerPort: 80,
+      containerPort: DOCKER_PORT,
       protocol: ecs.Protocol.TCP
     });
 
 
-    const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this, 'ecs-service', {
+    const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this, this.stackName+'ecs-service', {
       cluster: cluster,
       taskDefinition: taskDef,
       publicLoadBalancer: true,
       desiredCount: 1,
-      listenerPort: 80
+      listenerPort: LISTEN_PORT
     });
 
     const scaling = fargateService.service.autoScaleTaskCount({ maxCapacity: 6 });
@@ -252,10 +242,11 @@ export class CiCdStack extends cdk.Stack {
     })
 
     //ISSUE: NONE
-
-
-    new cdk.CfnOutput(this, 'LoadBalancerDNS', { value: fargateService.loadBalancer.loadBalancerDnsName });
-    new cdk.CfnOutput(this, 'Progess', { value: 'Finished 100%' });
+ 
+    new cdk.CfnOutput(this, `CodeCommit URI HTTPS`, {
+            exportName: 'CodeCommitURL',
+            value: codecommitRepo.repositoryCloneUrlHttp
+        });
 
   }
 }
